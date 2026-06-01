@@ -9,12 +9,61 @@ export default function AddTaskForm({
   projectId: string;
 }) {
   const [title, setTitle] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  async function addTask() {
-    if (!title.trim()) {
-      alert("Enter task title");
+  async function recalculateProjectProgress() {
+    const { data: tasks, error } = await supabase
+      .from("tasks")
+      .select("progress")
+      .eq("project_id", projectId);
+
+    if (error) {
+      console.error("Task Fetch Error:", error);
       return;
     }
+
+    if (!tasks || tasks.length === 0) {
+      return;
+    }
+
+    const total = tasks.reduce(
+      (sum, task) => sum + Number(task.progress || 0),
+      0
+    );
+
+    const average = Math.round(
+      total / tasks.length
+    );
+
+    console.log("Tasks:", tasks);
+    console.log("Total:", total);
+    console.log("Average:", average);
+
+    const { error: updateError } =
+      await supabase
+        .from("projects")
+        .update({
+          progress: average,
+          status:
+            average === 100
+              ? "completed"
+              : "active",
+        })
+        .eq("id", projectId);
+
+    if (updateError) {
+      console.error(
+        "Project Update Error:",
+        updateError
+      );
+    }
+  }
+
+  async function addTask() {
+    if (!title.trim()) return;
+
+    setLoading(true);
 
     const { error } = await supabase
       .from("tasks")
@@ -22,44 +71,138 @@ export default function AddTaskForm({
         {
           project_id: projectId,
           title,
-          status: "todo",
           progress: 0,
+          status: "todo",
         },
       ]);
 
     if (error) {
       alert(error.message);
+      setLoading(false);
       return;
     }
 
-    setTitle("");
+    await recalculateProjectProgress();
 
-    alert("Task Added ✅");
+    setTitle("");
+    setOpen(false);
+    setLoading(false);
 
     window.location.reload();
   }
 
   return (
-    <div className="mt-8 bg-slate-900 p-6 rounded-xl">
-      <h2 className="text-xl font-bold mb-4">
-        Add Task
-      </h2>
-
-      <input
-        className="w-full p-3 rounded bg-slate-800"
-        placeholder="Task Title"
-        value={title}
-        onChange={(e) =>
-          setTitle(e.target.value)
+    <>
+      <style>{`
+        .add-task-form {
+          transition: all 0.25s ease;
         }
-      />
+      `}</style>
 
-      <button
-        onClick={addTask}
-        className="mt-4 px-6 py-3 bg-blue-600 rounded"
-      >
-        Add Task
-      </button>
-    </div>
+      {!open ? (
+        <button
+          className="btn"
+          onClick={() => setOpen(true)}
+          style={{
+            width: "100%",
+            justifyContent: "center",
+            padding: "14px",
+            borderStyle: "dashed",
+            color: "var(--text-tertiary)",
+            fontSize: "14px",
+            gap: "8px",
+          }}
+        >
+          <span
+            style={{
+              fontSize: "18px",
+              lineHeight: 1,
+            }}
+          >
+            +
+          </span>
+          Add a task
+        </button>
+      ) : (
+        <div
+          className="card add-task-form"
+          style={{
+            padding: "20px",
+            animation:
+              "scaleIn 0.2s ease both",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              alignItems: "center",
+            }}
+          >
+            <input
+              className="input"
+              placeholder="What needs to be done?"
+              value={title}
+              onChange={(e) =>
+                setTitle(e.target.value)
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter")
+                  addTask();
+
+                if (e.key === "Escape")
+                  setOpen(false);
+              }}
+              autoFocus
+              style={{ flex: 1 }}
+            />
+
+            <button
+              className="btn btn-primary"
+              onClick={addTask}
+              disabled={
+                loading || !title.trim()
+              }
+              style={{
+                opacity: !title.trim()
+                  ? 0.5
+                  : 1,
+                flexShrink: 0,
+              }}
+            >
+              {loading
+                ? "Adding..."
+                : "Add"}
+            </button>
+
+            <button
+              className="btn"
+              onClick={() =>
+                setOpen(false)
+              }
+              style={{
+                flexShrink: 0,
+                color:
+                  "var(--text-tertiary)",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <p
+            style={{
+              fontSize: "11px",
+              color:
+                "var(--text-tertiary)",
+              marginTop: "8px",
+            }}
+          >
+            Press Enter to add · Esc to
+            cancel
+          </p>
+        </div>
+      )}
+    </>
   );
 }
