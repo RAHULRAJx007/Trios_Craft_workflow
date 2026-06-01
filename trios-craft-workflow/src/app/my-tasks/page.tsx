@@ -3,27 +3,38 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+type Task = {
+  id: string;
+  title: string;
+  status: string;
+  progress: number;
+};
+
 export default function MyTasksPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
-    loadTasks();
+    let active = true;
+
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user || !active) return;
+
+      const { data } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("assigned_to", user.id);
+
+      if (active) setTasks(data || []);
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
-
-  async function loadTasks() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("assigned_to", user.id);
-
-    setTasks(data || []);
-  }
 
   return (
     <div>

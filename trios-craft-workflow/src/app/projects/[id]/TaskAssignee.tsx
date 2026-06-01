@@ -21,29 +21,30 @@ export default function TaskAssignee({
     useState("");
 
   useEffect(() => {
-    loadProfiles();
-    loadTaskAssignee();
-  }, []);
+    let active = true;
 
-  async function loadProfiles() {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id,name");
+    (async () => {
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id,name");
 
-    setProfiles(data || []);
-  }
+      if (active) setProfiles(profilesData || []);
 
-  async function loadTaskAssignee() {
-    const { data } = await supabase
-      .from("tasks")
-      .select("assigned_to")
-      .eq("id", taskId)
-      .single();
+      const { data: taskData } = await supabase
+        .from("tasks")
+        .select("assigned_to")
+        .eq("id", taskId)
+        .single();
 
-    if (data?.assigned_to) {
-      setSelectedUser(data.assigned_to);
-    }
-  }
+      if (active && taskData?.assigned_to) {
+        setSelectedUser(taskData.assigned_to);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [taskId]);
 
   async function assignUser(userId: string) {
     setSelectedUser(userId);

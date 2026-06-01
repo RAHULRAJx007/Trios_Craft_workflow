@@ -1,5 +1,5 @@
 import "./globals.css";
-import Sidebar from "@/components/layout/Sidebar";
+import AppShell from "@/components/AppShell";
 
 export const metadata = {
   title: "TriosFlow — Workflow OS",
@@ -17,19 +17,7 @@ export default function RootLayout({
           minHeight: "100vh",
         }}
       >
-        <div style={{ display: "flex" }}>
-          <Sidebar />
-          <main
-            style={{
-              flex: 1,
-              padding: "36px 40px",
-              minHeight: "100vh",
-              overflowX: "hidden",
-            }}
-          >
-            {children}
-          </main>
-        </div>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

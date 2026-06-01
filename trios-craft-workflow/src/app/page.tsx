@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export default async function Home() {
@@ -8,10 +9,6 @@ export default async function Home() {
   const totalHours =
     timeEntries?.reduce((sum, e) => sum + Number(e.total_hours || 0), 0) || 0;
   const estimatedEarnings = totalHours * 500;
-  const avgProgress =
-    projects && projects.length > 0
-      ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length)
-      : 0;
 
   const stats = [
     {
@@ -148,7 +145,7 @@ export default async function Home() {
           >
             Projects
           </h2>
-          <a
+          <Link
             href="/projects"
             style={{
               fontSize: "13px",
@@ -160,7 +157,7 @@ export default async function Home() {
             }}
           >
             View all →
-          </a>
+          </Link>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -177,7 +174,7 @@ export default async function Home() {
             </div>
           ) : (
             (projects || []).slice(0, 5).map((project, i) => (
-              <a
+              <Link
                 key={project.id}
                 href={`/projects/${project.id}`}
                 className="card card-interactive"
@@ -291,7 +288,7 @@ export default async function Home() {
                 >
                   {project.status}
                 </span>
-              </a>
+              </Link>
             ))
           )}
         </div>

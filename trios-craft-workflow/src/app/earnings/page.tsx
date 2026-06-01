@@ -1,29 +1,10 @@
 import { supabase } from "@/lib/supabase";
 
 export default async function EarningsPage() {
-const { data: projects, error: projectsError } =
-  await supabase
-    .from("projects")
-    .select("*");
+  const { data: projects } = await supabase.from("projects").select("*");
+  const { data: profiles } = await supabase.from("profiles").select("*");
+  const { data: entries } = await supabase.from("time_entries").select("*");
 
-const { data: profiles, error: profilesError } =
-  await supabase
-    .from("profiles")
-    .select("*");
-
-const { data: entries, error: entriesError } =
-  await supabase
-    .from("time_entries")
-    .select("*");
-
-console.log("Projects:", projects);
-console.log("Projects Error:", projectsError);
-
-console.log("Profiles:", profiles);
-console.log("Profiles Error:", profilesError);
-
-console.log("Entries:", entries);
-console.log("Entries Error:", entriesError);
   return (
     <div className="text-white">
       <h1 className="text-4xl font-bold mb-8">

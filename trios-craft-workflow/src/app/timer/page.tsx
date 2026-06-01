@@ -46,34 +46,15 @@ export default function TimerPage() {
   const [selectedProject, setSelectedProject] = useState("");
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    loadProjects();
-    loadActiveSession();
-  }, []);
-
-  async function loadProjects() {
-    const { data } = await supabase.from("projects").select("id,name");
-    setProjects(data || []);
-  }
-
-  async function loadActiveSession() {
-    const { data } = await supabase
-      .from("active_sessions")
-      .select("*")
-      .eq("user_id", "Rahul")
-      .limit(1)
-      .single();
-    if (data) setActiveSession(data);
-  }
+  const [userId, setUserId] = useState<string | null>(null);
 
   async function startWork() {
-    if (!selectedProject) return;
+    if (!selectedProject || !userId) return;
     setLoading(true);
 
     const { data, error } = await supabase
       .from("active_sessions")
-      .insert([{ user_id: "Rahul", project_id: selectedProject }])
+      .insert([{ user_id: userId, project_id: selectedProject }])
       .select()
       .single();
 
@@ -82,7 +63,7 @@ export default function TimerPage() {
   }
 
   async function stopWork() {
-    if (!activeSession) return;
+    if (!activeSession || !userId) return;
     setLoading(true);
 
     const start = new Date(activeSession.started_at);
@@ -91,7 +72,7 @@ export default function TimerPage() {
 
     const { error: insertError } = await supabase.from("time_entries").insert([
       {
-        user_id: "Rahul",
+        user_id: userId,
         project_id: activeSession.project_id,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
@@ -106,6 +87,35 @@ export default function TimerPage() {
 
     setLoading(false);
   }
+
+  useEffect(() => {
+    let active = true;
+
+    (async () => {
+      const { data: projectData } = await supabase
+        .from("projects")
+        .select("id,name");
+      if (active) setProjects(projectData || []);
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user || !active) return;
+      setUserId(user.id);
+
+      const { data: session } = await supabase
+        .from("active_sessions")
+        .select("*")
+        .eq("user_id", user.id)
+        .limit(1)
+        .single();
+      if (active && session) setActiveSession(session);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const activeProject = projects.find((p) => p.id === activeSession?.project_id);
 

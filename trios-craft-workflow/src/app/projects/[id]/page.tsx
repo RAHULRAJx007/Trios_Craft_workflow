@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import AddTaskForm from "./AddTaskForm";
 import UpdateTaskProgress from "./UpdateTaskProgress";
@@ -56,7 +57,7 @@ export default async function ProjectDetails({
           color: "var(--text-tertiary)",
         }}
       >
-        <a
+        <Link
           href="/projects"
           style={{
             color: "var(--text-tertiary)",
@@ -65,7 +66,7 @@ export default async function ProjectDetails({
           }}
         >
           Projects
-        </a>
+        </Link>
         <span>›</span>
         <span style={{ color: "var(--text-secondary)" }}>{project.name}</span>
       </div>
