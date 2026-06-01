@@ -36,10 +36,6 @@ export default function AddTaskForm({
       total / tasks.length
     );
 
-    console.log("Tasks:", tasks);
-    console.log("Total:", total);
-    console.log("Average:", average);
-
     const { error: updateError } =
       await supabase
         .from("projects")
