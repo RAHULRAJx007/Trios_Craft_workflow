@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/activity";
 
 type Project = { id: string; name: string };
 type ActiveSession = { id: string; started_at: string; project_id: string };
@@ -45,27 +47,43 @@ export default function TimerPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState("");
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUserName, setCurrentUserName] = useState("You");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadProjects();
-    loadActiveSession();
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id ?? "";
+      setCurrentUserId(userId);
+
+      if (userId) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("id", userId)
+          .single();
+
+        if (profile?.name) {
+          setCurrentUserName(profile.name);
+        }
+      }
+
+      const { data: projectData } = await supabase.from("projects").select("id,name");
+      setProjects(projectData || []);
+
+      if (userId) {
+        const { data: sessionData } = await supabase
+          .from("active_sessions")
+          .select("*")
+          .eq("user_id", userId)
+          .limit(1)
+          .single();
+
+        if (sessionData) setActiveSession(sessionData);
+      }
+    })();
   }, []);
-
-  async function loadProjects() {
-    const { data } = await supabase.from("projects").select("id,name");
-    setProjects(data || []);
-  }
-
-  async function loadActiveSession() {
-    const { data } = await supabase
-      .from("active_sessions")
-      .select("*")
-      .eq("user_id", "Rahul")
-      .limit(1)
-      .single();
-    if (data) setActiveSession(data);
-  }
 
   async function startWork() {
     if (!selectedProject) return;
@@ -73,7 +91,7 @@ export default function TimerPage() {
 
     const { data, error } = await supabase
       .from("active_sessions")
-      .insert([{ user_id: "Rahul", project_id: selectedProject }])
+      .insert([{ user_id: currentUserId || "unknown", project_id: selectedProject }])
       .select()
       .single();
 
@@ -91,7 +109,7 @@ export default function TimerPage() {
 
     const { error: insertError } = await supabase.from("time_entries").insert([
       {
-        user_id: "Rahul",
+        user_id: currentUserId || "unknown",
         project_id: activeSession.project_id,
         start_time: start.toISOString(),
         end_time: end.toISOString(),
@@ -100,6 +118,14 @@ export default function TimerPage() {
     ]);
 
     if (!insertError) {
+      await logActivity({
+        userId: currentUserId || "unknown",
+        userName: currentUserName,
+        action: `logged ${hours.toFixed(2)} hours`,
+        projectId: activeSession.project_id,
+        projectName: activeProject?.name || "Unknown project",
+      });
+
       await supabase.from("active_sessions").delete().eq("id", activeSession.id);
       setActiveSession(null);
     }
@@ -110,7 +136,8 @@ export default function TimerPage() {
   const activeProject = projects.find((p) => p.id === activeSession?.project_id);
 
   return (
-    <div style={{ maxWidth: "600px", animation: "fadeUp 0.5s ease both" }}>
+    <RoleGuard allowedRoles={["member"]}>
+      <div style={{ maxWidth: "600px", animation: "fadeUp 0.5s ease both" }}>
       {/* Header */}
       <div style={{ marginBottom: "36px" }}>
         <div className="section-label" style={{ marginBottom: "8px" }}>
@@ -314,5 +341,6 @@ export default function TimerPage() {
         </div>
       </div>
     </div>
+    </RoleGuard>
   );
 }

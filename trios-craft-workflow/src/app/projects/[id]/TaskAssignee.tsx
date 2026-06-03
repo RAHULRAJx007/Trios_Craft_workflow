@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/activity";
+import { createNotification } from "@/lib/notifications";
 
 type Profile = {
   id: string;
@@ -10,8 +12,14 @@ type Profile = {
 
 export default function TaskAssignee({
   taskId,
+  taskTitle,
+  projectId,
+  projectName,
 }: {
   taskId: string;
+  taskTitle: string;
+  projectId: string;
+  projectName: string;
 }) {
   const [profiles, setProfiles] = useState<
     Profile[]
@@ -21,29 +29,24 @@ export default function TaskAssignee({
     useState("");
 
   useEffect(() => {
-    loadProfiles();
-    loadTaskAssignee();
-  }, []);
+    void (async () => {
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("id,name");
 
-  async function loadProfiles() {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id,name");
+      setProfiles(profileData || []);
 
-    setProfiles(data || []);
-  }
+      const { data: taskData } = await supabase
+        .from("tasks")
+        .select("assigned_to")
+        .eq("id", taskId)
+        .single();
 
-  async function loadTaskAssignee() {
-    const { data } = await supabase
-      .from("tasks")
-      .select("assigned_to")
-      .eq("id", taskId)
-      .single();
-
-    if (data?.assigned_to) {
-      setSelectedUser(data.assigned_to);
-    }
-  }
+      if (taskData?.assigned_to) {
+        setSelectedUser(taskData.assigned_to);
+      }
+    })();
+  }, [taskId]);
 
   async function assignUser(userId: string) {
     setSelectedUser(userId);
@@ -57,6 +60,43 @@ export default function TaskAssignee({
 
     if (error) {
       alert(error.message);
+      return;
+    }
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userIdValue = user?.id ?? "";
+    let userName = "Unknown";
+
+    if (user?.email) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("email", user.email)
+        .single();
+
+      if (profile?.name) {
+        userName = profile.name;
+      }
+    }
+
+    await logActivity({
+      userId: userIdValue,
+      userName,
+      action: `assigned task ${taskTitle}`,
+      projectId,
+      projectName,
+    });
+
+    if (userId) {
+      await createNotification({
+        userId,
+        title: "Task assigned",
+        message: `You were assigned to task ${taskTitle} in project ${projectName}.`,
+        type: "task",
+        relatedId: `/projects/${projectId}`,
+      });
     }
   }
 

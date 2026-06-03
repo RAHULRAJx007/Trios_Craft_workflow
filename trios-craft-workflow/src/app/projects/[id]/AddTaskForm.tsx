@@ -2,11 +2,14 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/activity";
 
 export default function AddTaskForm({
   projectId,
+  projectName,
 }: {
   projectId: string;
+  projectName: string;
 }) {
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(false);
@@ -83,6 +86,31 @@ export default function AddTaskForm({
     }
 
     await recalculateProjectProgress();
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const userId = user?.id ?? "";
+    let userName = "Unknown";
+
+    if (user?.email) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("email", user.email)
+        .single();
+      if (profile?.name) {
+        userName = profile.name;
+      }
+    }
+
+    await logActivity({
+      userId,
+      userName,
+      action: `created task ${title}`,
+      projectId,
+      projectName,
+    });
 
     setTitle("");
     setOpen(false);

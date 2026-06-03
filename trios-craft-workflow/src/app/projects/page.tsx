@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/activity";
+import { createNotificationForAdmins } from "@/lib/notifications";
+import EditProjectModal, { ProjectData } from "@/components/EditProjectModal";
+import DeleteProjectButton from "@/app/projects/[id]/DeleteProjectButton";
 
 type Project = {
   id: string;
@@ -11,6 +16,13 @@ type Project = {
   budget: number;
   progress: number;
   status: string;
+  client_id?: string | null;
+  clients?: { company_name?: string | null } | null;
+};
+
+type ClientOption = {
+  id: string;
+  company_name: string;
 };
 
 export default function ProjectsPage() {
@@ -18,53 +30,121 @@ export default function ProjectsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [budget, setBudget] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<ProjectData | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   useEffect(() => {
     loadProjects();
+    loadClients();
   }, []);
 
   async function loadProjects() {
     setFetching(true);
     const { data, error } = await supabase
       .from("projects")
-      .select("*")
+      .select("*, clients(company_name)")
       .order("created_at", { ascending: false });
 
     if (!error) setProjects(data || []);
     setFetching(false);
   }
 
+  async function loadClients() {
+    const { data, error } = await supabase
+      .from("clients")
+      .select("id, company_name")
+      .order("company_name", { ascending: true });
+
+    if (!error && data) {
+      setClients(data);
+      if (!clientId && data.length > 0) {
+        setClientId(data[0].id);
+      }
+    }
+  }
+
   async function createProject() {
     if (!name.trim()) return;
+    if (!clientId) {
+      alert("Please select a client before creating the project.");
+      return;
+    }
     setLoading(true);
 
-    const { error } = await supabase.from("projects").insert([
-      {
-        name,
-        description,
-        budget: Number(budget) || 0,
-        progress: 0,
-        status: "active",
-      },
-    ]);
+    const { data: projectData, error } = await supabase
+      .from("projects")
+      .insert([
+        {
+          name,
+          description,
+          budget: Number(budget) || 0,
+          progress: 0,
+          status: "active",
+          client_id: clientId || null,
+        },
+      ])
+      .select("id")
+      .single();
 
-    setLoading(false);
+    if (!error && projectData) {
+      const clientOption = clients.find((client) => client.id === clientId);
 
-    if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      let userName = "Unknown";
+      const userId = user?.id ?? "";
+
+      if (user?.email) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("email", user.email)
+          .single();
+
+        if (profile?.name) {
+          userName = profile.name;
+        }
+      }
+
+      await logActivity({
+        userId,
+        userName,
+        action: `created project ${name} for client ${clientOption?.company_name ?? "Unknown client"}`,
+        projectId: projectData.id,
+        projectName: name,
+        clientId: clientId || undefined,
+        clientName: clientOption?.company_name || undefined,
+      });
+
+      await createNotificationForAdmins({
+        title: "New project created",
+        message: `Project ${name} was created for client ${clientOption?.company_name ?? "Unknown client"}.`,
+        type: "project",
+        relatedId: `/projects/${projectData.id}`,
+      });
+
       setName("");
       setDescription("");
       setBudget("");
       setShowForm(false);
       loadProjects();
     }
+
+    setLoading(false);
   }
 
   return (
-    <>
-      <style>{`
+    <RoleGuard allowedRoles={["admin"]}>
+      <>
+        <style>{`
         .project-row:hover .project-arrow { opacity: 1; transform: translateX(0); }
         .project-arrow { opacity: 0; transform: translateX(-4px); transition: all 0.2s ease; }
         .form-overlay { animation: fadeIn 0.2s ease both; }
@@ -227,6 +307,33 @@ export default function ProjectsPage() {
                       letterSpacing: "0.06em",
                     }}
                   >
+                    Client
+                  </label>
+                  <select
+                    className="input"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                  >
+                    <option value="">Select a client</option>
+                    {clients.map((client) => (
+                      <option key={client.id} value={client.id}>
+                        {client.company_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      color: "var(--text-tertiary)",
+                      marginBottom: "6px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
                     Budget (₹)
                   </label>
                   <input
@@ -308,137 +415,204 @@ export default function ProjectsPage() {
             </div>
           ) : (
             projects.map((project, i) => (
-              <Link
+              <div
                 key={project.id}
-                href={`/projects/${project.id}`}
-                className="card card-interactive project-row"
+                className="card project-row"
                 style={{
                   padding: "18px 20px",
-                  textDecoration: "none",
-                  color: "inherit",
                   display: "flex",
                   alignItems: "center",
                   gap: "16px",
                   animation: `fadeUp 0.45s ease both`,
                   animationDelay: `${i * 55}ms`,
+                  position: "relative",
                 }}
               >
-                {/* Status dot */}
-                <div
+                <Link
+                  href={`/projects/${project.id}`}
+                  className="project-link"
                   style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    flexShrink: 0,
-                    background:
-                      project.status === "completed"
-                        ? "var(--green)"
-                        : project.status === "active"
-                        ? "var(--accent)"
-                        : "var(--amber)",
-                    boxShadow:
-                      project.status === "active"
-                        ? "0 0 0 3px var(--accent-dim)"
-                        : "none",
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "16px",
+                    textDecoration: "none",
+                    color: "inherit",
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: "8px",
+                      height: "8px",
+                      borderRadius: "50%",
+                      flexShrink: 0,
+                      background:
+                        project.status === "completed"
+                          ? "var(--green)"
+                          : project.status === "active"
+                          ? "var(--accent)"
+                          : "var(--amber)",
+                      boxShadow:
+                        project.status === "active"
+                          ? "0 0 0 3px var(--accent-dim)"
+                          : "none",
+                    }}
+                  />
 
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 600,
-                      fontSize: "14px",
-                      letterSpacing: "-0.01em",
-                      marginBottom: "3px",
-                    }}
-                  >
-                    {project.name}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--text-tertiary)",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {project.description || "No description"}
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div style={{ width: "120px", flexShrink: 0 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: "5px",
-                    }}
-                  >
-                    <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
-                      Progress
-                    </span>
-                    <span
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
                       style={{
-                        fontSize: "11px",
+                        fontFamily: "var(--font-display)",
                         fontWeight: 600,
-                        color: "var(--text-secondary)",
+                        fontSize: "14px",
+                        letterSpacing: "-0.01em",
+                        marginBottom: "3px",
                       }}
                     >
-                      {project.progress}%
-                    </span>
-                  </div>
-                  <div className="progress-track">
+                      {project.name}
+                    </div>
                     <div
-                      className="progress-fill"
-                      style={{ width: `${project.progress}%` }}
-                    />
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--text-tertiary)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {project.description || "No description"}
+                    </div>
                   </div>
+
+                  <div style={{ width: "120px", flexShrink: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        marginBottom: "5px",
+                      }}
+                    >
+                      <span style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
+                        Progress
+                      </span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        {project.progress}%
+                      </span>
+                    </div>
+                    <div className="progress-track">
+                      <div
+                        className="progress-fill"
+                        style={{ width: `${project.progress}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "var(--text-secondary)",
+                      fontWeight: 500,
+                      flexShrink: 0,
+                      minWidth: "80px",
+                      textAlign: "right",
+                    }}
+                  >
+                    ₹{Number(project.budget).toLocaleString("en-IN")}
+                  </div>
+
+                  <span
+                    className={`badge ${
+                      project.status === "completed"
+                        ? "badge-green"
+                        : project.status === "active"
+                        ? "badge-blue"
+                        : "badge-amber"
+                    }`}
+                    style={{ flexShrink: 0 }}
+                  >
+                    {project.status}
+                  </span>
+                </Link>
+
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <button
+                    className="btn"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setActiveMenuId((value) => (value === project.id ? null : project.id));
+                    }}
+                    style={{ padding: "8px 12px", fontSize: "14px" }}
+                  >
+                    ⋯
+                  </button>
+
+                  {activeMenuId === project.id && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 0,
+                        top: "110%",
+                        width: "180px",
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "14px",
+                        boxShadow: "0 18px 40px rgba(0,0,0,0.16)",
+                        zIndex: 20,
+                        padding: "8px",
+                      }}
+                    >
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          setEditingProject(project);
+                          setEditOpen(true);
+                          setActiveMenuId(null);
+                        }}
+                        style={{
+                          width: "100%",
+                          justifyContent: "flex-start",
+                          padding: "10px 12px",
+                          background: "none",
+                          border: "none",
+                          color: "var(--text-secondary)",
+                        }}
+                      >
+                        Edit project
+                      </button>
+
+                      <div style={{ marginTop: "6px" }}>
+                        <DeleteProjectButton projectId={project.id} projectName={project.name} />
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                {/* Budget */}
-                <div
-                  style={{
-                    fontSize: "13px",
-                    color: "var(--text-secondary)",
-                    fontWeight: 500,
-                    flexShrink: 0,
-                    minWidth: "80px",
-                    textAlign: "right",
-                  }}
-                >
-                  ₹{Number(project.budget).toLocaleString("en-IN")}
-                </div>
-
-                {/* Status badge */}
-                <span
-                  className={`badge ${
-                    project.status === "completed"
-                      ? "badge-green"
-                      : project.status === "active"
-                      ? "badge-blue"
-                      : "badge-amber"
-                  }`}
-                  style={{ flexShrink: 0 }}
-                >
-                  {project.status}
-                </span>
-
-                {/* Arrow */}
-                <span
-                  className="project-arrow"
-                  style={{ fontSize: "16px", color: "var(--text-tertiary)" }}
-                >
-                  →
-                </span>
-              </Link>
+              </div>
             ))
           )}
         </div>
+
+        {editingProject && (
+          <EditProjectModal
+            open={editOpen}
+            project={editingProject}
+            onClose={() => {
+              setEditOpen(false);
+              setEditingProject(null);
+            }}
+            onSaved={() => {
+              loadProjects();
+            }}
+          />
+        )}
       </div>
     </>
+    </RoleGuard>
   );
 }

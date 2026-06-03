@@ -1,32 +1,39 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import RoleGuard from "@/components/RoleGuard";
 import { supabase } from "@/lib/supabase";
 
+type Task = {
+  id: string;
+  title?: string;
+  status?: string;
+  progress?: number | null;
+};
+
 export default function MyTasksPage() {
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
-    loadTasks();
+    void (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("assigned_to", user.id);
+
+      setTasks(data || []);
+    })();
   }, []);
 
-  async function loadTasks() {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .eq("assigned_to", user.id);
-
-    setTasks(data || []);
-  }
-
   return (
-    <div>
+    <RoleGuard allowedRoles={["member"]}>
+      <div>
       <h1 className="text-4xl font-bold mb-6">
         My Tasks
       </h1>
@@ -46,5 +53,6 @@ export default function MyTasksPage() {
         ))}
       </div>
     </div>
+    </RoleGuard>
   );
 }

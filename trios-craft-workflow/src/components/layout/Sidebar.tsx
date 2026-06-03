@@ -1,7 +1,93 @@
+﻿
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import LogoutButton from "../LogoutButton";
+import { supabase } from "@/lib/supabase";
+import { UserRole } from "@/lib/getCurrentUserRole";
+
+type NavItem = {
+  href: string;
+  icon: string;
+  label: string;
+};
+
+const adminNavigation: NavItem[] = [
+  { href: "/", icon: "📊", label: "Dashboard" },
+  { href: "/calendar", icon: "📅", label: "Calendar" },
+  { href: "/clients", icon: "🧾", label: "Clients" },
+  { href: "/projects", icon: "📁", label: "Projects" },
+  { href: "/team", icon: "👥", label: "Team" },
+  { href: "/earnings", icon: "💰", label: "Earnings" },
+  { href: "/notifications", icon: "🔔", label: "Notifications" },
+  { href: "/calendar", icon: "📅", label: "Calendar" },
+  { href: "/timer", icon: "⏱", label: "Timer" },
+  { href: "/my-tasks", icon: "✅", label: "My Tasks" },
+  { href: "/settings", icon: "⚙️", label: "Settings" },
+];
+
+const memberNavigation: NavItem[] = [
+  { href: "/calendar", icon: "📅", label: "Calendar" },
+  { href: "/notifications", icon: "🔔", label: "Notifications" },
+  { href: "/my-tasks", icon: "✅", label: "My Tasks" },
+  { href: "/timer", icon: "⏱", label: "Timer" },
+  { href: "/my-earnings", icon: "💰", label: "My Earnings" },
+  { href: "/profile", icon: "👤", label: "Profile" },
+];
+
+const clientNavigation: NavItem[] = [
+  { href: "/client", icon: "🏠", label: "Dashboard" },
+  { href: "/client/projects", icon: "📁", label: "Projects" },
+  { href: "/client/invoices", icon: "🧾", label: "Invoices" },
+  { href: "/client/reports", icon: "📄", label: "Reports" },
+  { href: "/client/messages", icon: "💬", label: "Messages" },
+];
+
+const genericNavigation: NavItem[] = [
+  { href: "/timer", icon: "⏱", label: "Timer" },
+  { href: "/my-tasks", icon: "✅", label: "My Tasks" },
+];
 
 export default function Sidebar() {
+  const [role, setRole] = useState<UserRole | null>(null);
+  const [profileName, setProfileName] = useState("Team Member");
+  const [profileTitle, setProfileTitle] = useState("Member");
+
+  useEffect(() => {
+    void (async () => {
+      const role = await import("@/lib/getCurrentUserRole").then((mod) =>
+        mod.getCurrentUserRole()
+      );
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.email) {
+        setProfileName(user.email);
+      }
+
+      if (role === "admin") {
+        setProfileTitle("Administrator");
+        setRole("admin");
+      } else if (role === "member") {
+        setProfileTitle("Member");
+        setRole("member");
+      } else if (role === "client") {
+        setProfileTitle("Client");
+        setRole("client");
+      }
+    })();
+  }, []);
+
+  const navigation =
+    role === "admin"
+      ? adminNavigation
+      : role === "member"
+      ? memberNavigation
+      : role === "client"
+      ? clientNavigation
+      : genericNavigation;
+
   return (
     <aside
       className="sidebar"
@@ -20,7 +106,6 @@ export default function Sidebar() {
         animation: "slideInLeft 0.4s ease both",
       }}
     >
-      {/* Logo */}
       <div
         style={{
           padding: "4px 12px 24px",
@@ -77,7 +162,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav
         style={{
           display: "flex",
@@ -85,41 +169,11 @@ export default function Sidebar() {
           gap: "2px",
         }}
       >
-        {[
-          {
-            href: "/",
-            icon: "📊",
-            label: "Dashboard",
-          },
-          {
-            href: "/projects",
-            icon: "📁",
-            label: "Projects",
-          },
-          {
-            href: "/timer",
-            icon: "⏱",
-            label: "Timer",
-          },
-          {
-            href: "/earnings",
-            icon: "💰",
-            label: "Earnings",
-          },
-          {
-            href: "/team",
-            icon: "👥",
-            label: "Team",
-          },
-          {
-  href: "/my-tasks",
-  icon: "✅",
-  label: "My Tasks",
-},
-        ].map(({ href, icon, label }, i) => (
+        {navigation.map(({ href, icon, label }, i) => (
           <Link
-            key={href}
+            key={`${href}-${i}`}
             href={href}
+
             style={{
               display: "flex",
               alignItems: "center",
@@ -144,13 +198,11 @@ export default function Sidebar() {
             >
               {icon}
             </span>
-
             {label}
           </Link>
         ))}
       </nav>
 
-      {/* Bottom Section */}
       <div
         style={{
           marginTop: "auto",
@@ -159,7 +211,6 @@ export default function Sidebar() {
           gap: "12px",
         }}
       >
-        {/* User Card */}
         <div
           style={{
             padding: "10px 12px",
@@ -188,7 +239,7 @@ export default function Sidebar() {
               flexShrink: 0,
             }}
           >
-            R
+            {profileName.charAt(0).toUpperCase()}
           </div>
 
           <div>
@@ -199,7 +250,7 @@ export default function Sidebar() {
                 color: "var(--text-primary)",
               }}
             >
-              Rahul
+              {profileName}
             </div>
 
             <div
@@ -208,12 +259,11 @@ export default function Sidebar() {
                 color: "var(--text-tertiary)",
               }}
             >
-              Owner
+              {profileTitle}
             </div>
           </div>
         </div>
 
-        {/* Logout Button */}
         <LogoutButton />
       </div>
 

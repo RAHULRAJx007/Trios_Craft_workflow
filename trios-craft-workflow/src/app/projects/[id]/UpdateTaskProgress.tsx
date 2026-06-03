@@ -1,13 +1,19 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
+import { logActivity } from "@/lib/activity";
+import { createNotification } from "@/lib/notifications";
 
 export default function UpdateTaskProgress({
   taskId,
+  taskTitle,
   projectId,
+  projectName,
 }: {
   taskId: string;
+  taskTitle: string;
   projectId: string;
+  projectName: string;
 }) {
   async function updateProgress(progress: number) {
     const { error: taskError } = await supabase
@@ -26,6 +32,44 @@ export default function UpdateTaskProgress({
     if (taskError) {
       alert(taskError.message);
       return;
+    }
+
+    if (progress === 100) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      const userId = user?.id ?? "";
+      let userName = "Unknown";
+
+      if (user?.email) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("email", user.email)
+          .single();
+
+        if (profile?.name) {
+          userName = profile.name;
+        }
+      }
+
+      await logActivity({
+        userId,
+        userName,
+        action: `completed task ${taskTitle}`,
+        projectId,
+        projectName,
+      });
+
+      if (userId) {
+        await createNotification({
+          userId,
+          title: "Task completed",
+          message: `Task ${taskTitle} in project ${projectName} was completed.`,
+          type: "task",
+          relatedId: `/projects/${projectId}`,
+        });
+      }
     }
 
     // Get all tasks for this project
